@@ -28,7 +28,15 @@ export interface HabitModel {
   getProductivityWeights(): HourlyWeights;
 }
 
-export interface TimeRange {
+/** An approved, task-linked scheduled period of focused work. */
+export interface TimeBlock {
+  taskId: string;
+  start: Date;
+  end: Date;
+}
+
+/** A generic time interval passed to the AI Scheduler representing any period that cannot be scheduled. */
+export interface OccupiedRange {
   start: Date;
   end: Date;
 }

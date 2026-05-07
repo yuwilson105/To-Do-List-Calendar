@@ -1,10 +1,4 @@
-import type { Task } from "./types";
-
-export interface TimeBlock {
-  taskId: string;
-  start: Date;
-  end: Date;
-}
+import type { Task, TimeBlock } from "./types";
 
 export interface DailyProgress {
   completed: number;

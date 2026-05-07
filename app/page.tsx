@@ -5,8 +5,8 @@ import { HabitModel, InMemoryHabitStore } from "@/lib/habit-model";
 import { scoreTask } from "@/lib/next-action-scorer";
 import { proposeCandidates } from "@/lib/ai-scheduler";
 import { getDailyProgress } from "@/lib/daily-progress";
-import type { Task, Priority, TimeBlockCandidate } from "@/lib/types";
-import type { TimeBlock } from "@/lib/daily-progress";
+import { FocusMode } from "@/app/focus-mode";
+import type { Task, Priority, TimeBlock, TimeBlockCandidate, OccupiedRange } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Static external calendar events (placeholder until Google Calendar sync)
@@ -323,8 +323,36 @@ export default function Home() {
   const [openPopoverTaskId, setOpenPopoverTaskId] = useState<string | null>(null);
   const [popoverCandidates, setPopoverCandidates] = useState<TimeBlockCandidate[]>([]);
   const [now, setNow] = useState(new Date());
+  const [loading, setLoading] = useState(true);
+  const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
 
   const habitModelRef = useRef(new HabitModel(new InMemoryHabitStore()));
+
+  // Load persisted tasks and time blocks on mount
+  useEffect(() => {
+    fetch("/api/tasks")
+      .then((res) => res.json())
+      .then((data: { tasks: Task[]; timeBlocks: Array<{ taskId: string; start: string; end: string }> }) => {
+        // Dates arrive as ISO strings from JSON — rehydrate them
+        setTasks(
+          data.tasks.map((t) => ({
+            ...t,
+            dueDate: t.dueDate ? new Date(t.dueDate as unknown as string) : null,
+            createdAt: new Date(t.createdAt as unknown as string),
+            completedAt: t.completedAt ? new Date(t.completedAt as unknown as string) : null,
+          }))
+        );
+        setTimeBlocks(
+          data.timeBlocks.map((tb) => ({
+            taskId: tb.taskId,
+            start: new Date(tb.start),
+            end: new Date(tb.end),
+          }))
+        );
+      })
+      .catch((err) => console.error("Failed to load initial data:", err))
+      .finally(() => setLoading(false));
+  }, []);
 
   // Refresh `now` every 5 minutes to recalculate Next Action scores
   useEffect(() => {
@@ -356,6 +384,12 @@ export default function Home() {
       createdAt: new Date(),
       completedAt: null,
     };
+    // Optimistic: persist then update local state
+    fetch("/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(task),
+    }).catch((err) => console.error("Failed to save task:", err));
     setTasks((prev) => [...prev, task]);
     setInput("");
   }, [input]);
@@ -371,6 +405,12 @@ export default function Home() {
         return { ...t, status: "complete", completedAt };
       })
     );
+    // Persist completion
+    fetch(`/api/tasks/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "complete", completedAt: completedAt.toISOString() }),
+    }).catch((err) => console.error("Failed to persist completion:", err));
     setOpenPopoverTaskId(null);
   }, [timeBlocks]);
 
@@ -383,7 +423,7 @@ export default function Home() {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
 
-    const occupied = [
+    const occupied: OccupiedRange[] = [
       ...timeBlocks.map((tb) => ({ start: tb.start, end: tb.end })),
       ...EXTERNAL_EVENTS.map((ev) => ({ start: todayAt(ev.start), end: todayAt(ev.end) })),
     ];
@@ -394,12 +434,24 @@ export default function Home() {
   }, [tasks, timeBlocks, openPopoverTaskId]);
 
   const handleApproveSchedule = useCallback((taskId: string, candidate: TimeBlockCandidate) => {
-    setTimeBlocks((prev) => [...prev, { taskId, start: candidate.start, end: candidate.end }]);
+    const block: TimeBlock = { taskId, start: candidate.start, end: candidate.end };
+    setTimeBlocks((prev) => [...prev, block]);
+    // Persist the approved time block
+    fetch("/api/time-blocks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ taskId, start: candidate.start.toISOString(), end: candidate.end.toISOString() }),
+    }).catch((err) => console.error("Failed to persist time block:", err));
     setOpenPopoverTaskId(null);
   }, []);
 
   return (
     <div className="h-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden">
+      {loading && (
+        <div className="absolute inset-0 bg-slate-950 flex items-center justify-center z-50">
+          <div className="w-6 h-6 rounded-full border-2 border-slate-700 border-t-slate-400 animate-spin" />
+        </div>
+      )}
       {/* Top bar */}
       <div className="flex items-center gap-3 px-5 py-2.5 border-b border-slate-800 flex-shrink-0">
         <span className="font-bold tracking-widest text-slate-300 text-sm uppercase">Kairos</span>
@@ -450,7 +502,10 @@ export default function Home() {
                   <span>·</span>
                   <PriorityBadge priority={nextAction.priority} />
                 </div>
-                <button className="mt-2.5 w-full py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-medium rounded-lg transition-colors">
+                <button
+                  onClick={() => setFocusTaskId(nextAction.id)}
+                  className="mt-2.5 w-full py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-medium rounded-lg transition-colors"
+                >
                   Start focus session →
                 </button>
               </div>
@@ -488,6 +543,22 @@ export default function Home() {
         {/* Right — calendar */}
         <Calendar timeBlocks={timeBlocks} />
       </div>
+
+      {/* Focus Mode overlay */}
+      {focusTaskId && (() => {
+        const focusTask = tasks.find((t) => t.id === focusTaskId);
+        if (!focusTask) return null;
+        return (
+          <FocusMode
+            task={focusTask}
+            onComplete={(id) => {
+              handleComplete(id);
+              setFocusTaskId(null);
+            }}
+            onExit={() => setFocusTaskId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

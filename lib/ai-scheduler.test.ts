@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { proposeCandidates } from "./ai-scheduler";
-import type { Task, HabitModel, HourlyWeights, TimeRange } from "./types";
+import type { Task, HabitModel, HourlyWeights, OccupiedRange } from "./types";
 
 const flatHabitModel: HabitModel = {
   getProductivityWeights: () => Array(24).fill(1) as unknown as HourlyWeights,
@@ -33,7 +33,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
   };
 }
 
-function overlaps(a: TimeRange, b: TimeRange): boolean {
+function overlaps(a: OccupiedRange, b: OccupiedRange): boolean {
   return a.start < b.end && a.end > b.start;
 }
 
@@ -43,7 +43,7 @@ describe("proposeCandidates", () => {
     const task = makeTask({ estimatedDurationMinutes: 60 });
 
     // Block every working hour for 7 days
-    const occupied: TimeRange[] = [];
+    const occupied: OccupiedRange[] = [];
     for (let day = 0; day < 8; day++) {
       const start = new Date("2026-05-06T08:00:00");
       start.setDate(start.getDate() + day);
@@ -88,7 +88,7 @@ describe("proposeCandidates", () => {
     const task = makeTask({ estimatedDurationMinutes: 60 });
 
     // Block 9am–11am on the same day
-    const occupied: TimeRange[] = [
+    const occupied: OccupiedRange[] = [
       {
         start: new Date("2026-05-06T09:00:00"),
         end: new Date("2026-05-06T11:00:00"),
@@ -98,7 +98,7 @@ describe("proposeCandidates", () => {
     const candidates = proposeCandidates(task, occupied, flatHabitModel, now);
 
     for (const candidate of candidates) {
-      const candidateRange: TimeRange = { start: candidate.start, end: candidate.end };
+      const candidateRange: OccupiedRange = { start: candidate.start, end: candidate.end };
       for (const busy of occupied) {
         expect(overlaps(candidateRange, busy)).toBe(false);
       }

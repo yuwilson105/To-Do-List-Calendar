@@ -1,4 +1,4 @@
-import type { Task, HabitModel, TimeRange, TimeBlockCandidate } from "./types";
+import type { Task, HabitModel, OccupiedRange, TimeBlockCandidate } from "./types";
 
 const WORKING_HOUR_START = 8;  // 8am
 const WORKING_HOUR_END = 20;   // 8pm
@@ -8,7 +8,7 @@ const MAX_CANDIDATES = 3;
 
 const PRIORITY_WEIGHT = { high: 3, medium: 2, low: 1 } as const;
 
-function overlaps(a: TimeRange, b: TimeRange): boolean {
+function overlaps(a: OccupiedRange, b: OccupiedRange): boolean {
   return a.start < b.end && a.end > b.start;
 }
 
@@ -26,7 +26,7 @@ function addMinutes(date: Date, minutes: number): Date {
  */
 export function proposeCandidates(
   task: Task,
-  occupiedRanges: TimeRange[],
+  occupiedRanges: OccupiedRange[],
   habitModel: HabitModel,
   now: Date
 ): TimeBlockCandidate[] {
@@ -75,7 +75,7 @@ export function proposeCandidates(
       continue;
     }
 
-    const slot: TimeRange = { start: new Date(cursor), end: slotEnd };
+    const slot: OccupiedRange = { start: new Date(cursor), end: slotEnd };
     const isFree = !occupiedRanges.some((busy) => overlaps(slot, busy));
 
     if (isFree) {

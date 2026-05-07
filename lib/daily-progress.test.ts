@@ -1,12 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getDailyProgress } from "./daily-progress";
-import type { Task } from "./types";
-
-interface TimeBlock {
-  taskId: string;
-  start: Date;
-  end: Date;
-}
+import type { Task, TimeBlock } from "./types";
 
 const TODAY = new Date("2026-05-06T10:00:00");
 
